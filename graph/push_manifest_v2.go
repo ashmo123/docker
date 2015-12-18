@@ -21,9 +21,9 @@ import (
 	"golang.org/x/net/context"
 )
 
-const compressionBufSize = 32768
+//const compressionBufSize = 32768
 
-type v2Pusher struct {
+type v2ManifestPusher struct {
 	*TagStore
 	endpoint  registry.APIEndpoint
 	localRepo Repository
@@ -38,16 +38,17 @@ type v2Pusher struct {
 	layersPushed map[digest.Digest]bool
 }
 
-func (p *v2Pusher) Push() (fallback bool, err error) {
+func (p *v2ManifestPusher) Push() (fallback bool, err error) {
+	fmt.Println("v2ManifestPusher.Push")
 	p.repo, err = NewV2Repository(p.repoInfo, p.endpoint, p.config.MetaHeaders, p.config.AuthConfig, "push", "pull")
 	if err != nil {
 		logrus.Debugf("Error getting v2 registry: %v", err)
 		return true, err
 	}
-	return false, p.pushV2Repository(p.config.Tag)
+	return false, p.pushV2Manifest(p.config.Tag)
 }
 
-func (p *v2Pusher) getImageTags(askedTag string) ([]string, error) {
+func (p *v2ManifestPusher) getImageTags(askedTag string) ([]string, error) {
 	logrus.Debugf("Checking %q against %#v", askedTag, p.localRepo)
 	if len(askedTag) > 0 {
 		if _, ok := p.localRepo[askedTag]; !ok || utils.DigestReference(askedTag) {
@@ -64,7 +65,8 @@ func (p *v2Pusher) getImageTags(askedTag string) ([]string, error) {
 	return tags, nil
 }
 
-func (p *v2Pusher) pushV2Repository(tag string) error {
+func (p *v2ManifestPusher) pushV2Manifest(tag string) error {
+	fmt.Println("In v2ManifestPusher.PushV2Manifest")
 	localName := p.repoInfo.LocalName
 	if _, found := p.poolAdd("push", localName); found {
 		return fmt.Errorf("push or pull %s is already in progress", localName)
@@ -80,7 +82,7 @@ func (p *v2Pusher) pushV2Repository(tag string) error {
 	}
 
 	for _, tag := range tags {
-		if err := p.pushV2Tag(tag); err != nil {
+		if err := p.pushV2ManifestTag(tag); err != nil {
 			return err
 		}
 	}
@@ -88,7 +90,8 @@ func (p *v2Pusher) pushV2Repository(tag string) error {
 	return nil
 }
 
-func (p *v2Pusher) pushV2Tag(tag string) error {
+func (p *v2ManifestPusher) pushV2ManifestTag(tag string) error {
+	logrus.Debugf("Pushing tag to V2 registry: %s", tag)
 	logrus.Debugf("Pushing repository: %s:%s", p.repo.Name(), tag)
 
 	layerID, exists := p.localRepo[tag]
@@ -113,8 +116,7 @@ func (p *v2Pusher) pushV2Tag(tag string) error {
 		FSLayers:     []manifest.FSLayer{},
 		History:      []manifest.History{},
 	}
-	logrus.Debugf("Pushing manifest : SchemaVersion: %s\n, Name : %s\n , Tag : %s\n, Architecture: %s\n, FSLayers:%s\n, History: %s\n ", m.Versioned,
-		m.Name, m.Tag, m.Architecture, m.History)
+	logrus.Debugf("Initializing manifest : %s", m)
 
 	var metadata runconfig.Config
 	if layer != nil && layer.Config != nil {
@@ -203,6 +205,7 @@ func (p *v2Pusher) pushV2Tag(tag string) error {
 
 	logrus.Infof("Signed manifest for %s:%s using daemon's key: %s", p.repo.Name(), tag, p.trustKey.KeyID())
 	signed, err := manifest.Sign(m, p.trustKey)
+	logrus.Debugf("preparing manifest : %s", m)
 	if err != nil {
 		return err
 	}
@@ -219,10 +222,13 @@ func (p *v2Pusher) pushV2Tag(tag string) error {
 	if err != nil {
 		return err
 	}
+	logrus.Infof("Pushed manifest: tag: %s/n digest: %s/n size: %d/n ", tag, manifestDigest, manifestSize)
+	logrus.Infof("Repo name and trust key -> signed manifest: %s\n", p.repo.Name(), p.trustKey.KeyID())
+	logrus.Debugf("manifest : %s", manSvc.Put(signed))
 	return manSvc.Put(signed)
 }
 
-func (p *v2Pusher) pushV2Image(bs distribution.BlobService, img *image.Image) (digest.Digest, error) {
+func (p *v2ManifestPusher) pushV2Image(bs distribution.BlobService, img *image.Image) (digest.Digest, error) {
 	out := p.config.OutStream
 
 	out.Write(p.sf.FormatProgress(stringid.TruncateID(img.ID), "Preparing", nil))

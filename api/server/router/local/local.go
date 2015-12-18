@@ -125,6 +125,7 @@ func (r *router) initRoutes() {
 		NewPostRoute("/images/create", r.postImagesCreate),
 		NewPostRoute("/images/load", r.postImagesLoad),
 		NewPostRoute("/images/{name:.*}/push", r.postImagesPush),
+		NewPostRoute("/images/{name:.*}/pushmani", r.postImagesPushManifest),
 		NewPostRoute("/images/{name:.*}/tag", r.postImagesTag),
 		NewPostRoute("/containers/create", r.postContainersCreate),
 		NewPostRoute("/containers/{name:.*}/kill", r.postContainersKill),

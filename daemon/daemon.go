@@ -1057,6 +1057,13 @@ func (daemon *Daemon) PushImage(localName string, imagePushConfig *graph.ImagePu
 	return daemon.repositories.Push(localName, imagePushConfig)
 }
 
+ // PushImage initiates a push operation on the  manifest to the registry. 
+ //if the tag is changed by the user the new tag is pushed
+ func (daemon *Daemon) PushImageManifest(localName string, newTag string, imagePushConfig *graph.ImagePushConfig) error {
+	 fmt.Println("In daemon.PushManifest")        
+	 return daemon.repositories.PushManifest(localName, newTag , imagePushConfig)
+}
+
 // LookupImage looks up an image by name and returns it as an ImageInspect
 // structure.
 func (daemon *Daemon) LookupImage(name string) (*types.ImageInspect, error) {

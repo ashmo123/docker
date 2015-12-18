@@ -207,6 +207,62 @@ func (s *router) postImagesPush(ctx context.Context, w http.ResponseWriter, r *h
 	return nil
 }
 
+func (s *router) postImagesPushManifest(ctx context.Context, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
+	var (
+		newTag = r.Form.Get("newTag")
+	)
+	if vars == nil {
+		return fmt.Errorf("Missing parameter")
+	}
+
+	metaHeaders := map[string][]string{}
+	for k, v := range r.Header {
+		if strings.HasPrefix(k, "X-Meta-") {
+			metaHeaders[k] = v
+		}
+	}
+	if err := httputils.ParseForm(r); err != nil {
+		return err
+	}
+	authConfig := &cliconfig.AuthConfig{}
+	authEncoded := r.Header.Get("X-Registry-Auth")
+	if authEncoded != "" {
+		// the new format is to handle the authConfig as a header
+		authJSON := base64.NewDecoder(base64.URLEncoding, strings.NewReader(authEncoded))
+		if err := json.NewDecoder(authJSON).Decode(authConfig); err != nil {
+			// to increase compatibility to existing api it is defaulting to be empty
+			authConfig = &cliconfig.AuthConfig{}
+		}
+	} else {
+		// the old format is supported for compatibility if there was no authConfig header
+		if err := json.NewDecoder(r.Body).Decode(authConfig); err != nil {
+			return fmt.Errorf("Bad parameters and missing X-Registry-Auth: %v", err)
+		}
+	}
+	logrus.Debugf("Form: %s\n", r.Form)
+	logrus.Debugf("Name of Repo: %s \n", vars)
+	logrus.Debugf("Tag info: %s \n", r.Form.Get("tag"))
+	name := vars["name"]
+	output := ioutils.NewWriteFlusher(w)
+	imagePushConfig := &graph.ImagePushConfig{
+		MetaHeaders: metaHeaders,
+		AuthConfig:  authConfig,
+		Tag:         r.Form.Get("tag"),
+		OutStream:   output,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if err := s.daemon.PushImageManifest(name, newTag, imagePushConfig); err != nil {
+		if !output.Flushed() {
+			return err
+		}
+		sf := streamformatter.NewJSONStreamFormatter()
+		output.Write(sf.FormatError(err))
+	}
+
+	return nil
+}
 func (s *router) getImagesGet(ctx context.Context, w http.ResponseWriter, r *http.Request, vars map[string]string) error {
 	if vars == nil {
 		return fmt.Errorf("Missing parameter")
